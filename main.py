@@ -425,7 +425,7 @@ def main(args):
                            img_test_dir,
                            arg=args)
 
-        avg_loss =train_one_epoch(epoch,
+        avg_loss = train_one_epoch(epoch,
                         dataloader_train,
                         model,
                         criterion,
