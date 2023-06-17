@@ -17,7 +17,7 @@ from unet import UNet
 
 IS_LINUX = True if platform.system()=="Linux" else False
 
-def train_one_epoch(epoch, dataloader, model, criterion, optimizer, device, log_interval_vis, tb_writer, args=None):
+def train_one_epoch(epoch, dataloader, model, criterion, criterion_reconstruction, optimizer, device, log_interval_vis, tb_writer, args=None):
     imgs_res_folder = os.path.join(args.output_dir, 'current_res')
     os.makedirs(imgs_res_folder,exist_ok=True)
     # Put model in training mode
@@ -32,15 +32,21 @@ def train_one_epoch(epoch, dataloader, model, criterion, optimizer, device, log_
     for batch_id, sample_batched in enumerate(dataloader):
         images = sample_batched['images'].to(device)  # BxCxHxW  torch.Size([8, 3, 352, 352])
         labels = sample_batched['labels'].to(device)  # BxHxW torch.Size([8, 1, 352, 352])
-        preds_list = model(images)
+        preds_list, decoded = model(images)
         # unet = UNet(n_channels=3, n_classes=1, bilinear=True)
         # preds_list=unet(images)
         # unet.to(device=device)
         # import pdb;pdb.set_trace()
         #* preds_list[0].shape torch.Size([8, 1, 352, 352])
         # loss = sum([criterion(preds, labels, l_w, device) for preds, l_w in zip(preds_list, l_weight)])  # cats_loss
-        loss = sum([criterion(preds, labels,l_w) for preds, l_w in zip(preds_list,l_weight[:len(preds_list)])]) # bdcn_loss
+        # loss = sum([criterion(preds, labels,l_w) for preds, l_w in zip(preds_list,l_weight[:len(preds_list)])]) # bdcn_loss
+        unet_edge_loss = sum([criterion(preds, labels,l_w) for preds, l_w in zip(preds_list,l_weight[:len(preds_list)])]) # bdcn_loss
         # loss = sum([criterion(preds, labels) for preds in preds_list])  #HED loss, rcf_loss
+
+        # loss for encoder decoder and add to current loss
+        reconstruction_loss = criterion_reconstruction(decoded, images)
+        loss = unet_edge_loss + reconstruction_loss # both bdcn_loss and 
+
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -326,7 +332,7 @@ def main(args):
 
     tb_writer = None
     training_dir = os.path.join(args.output_dir,args.train_data)
-    os.makedirs(training_dir,exist_ok=True)
+    os.makedirs(training_dir, exist_ok=True)
     checkpoint_path = os.path.join(args.output_dir, args.train_data, args.checkpoint_data)
     if args.tensorboard and not args.is_testing:
         from torch.utils.tensorboard import SummaryWriter # for torch 1.4 or greather
@@ -374,14 +380,14 @@ def main(args):
                               img_width=args.test_img_width,
                               img_height=args.test_img_height,
                               mean_bgr=args.mean_pixel_values[0:3] if len(args.mean_pixel_values) == 4 else args.mean_pixel_values,
-                              test_list=args.test_list, arg=args)
+                              test_list=args.test_list, arg = args)
     dataloader_val = DataLoader(dataset_val,
                                 batch_size=1,
                                 shuffle=False,
                                 num_workers=args.workers)
     # Testing
     if args.is_testing:
-        output_dir = os.path.join(args.res_dir, args.train_data+"2"+ args.test_data)
+        output_dir = os.path.join(args.res_dir, args.train_data + "2" + args.test_data)
         print(f"output_dir: {output_dir}")
         if args.double_img:
             # predict twice an image changing channels, then mix those results
@@ -402,8 +408,8 @@ def main(args):
     lr2= args.lr
     # import pdb;pdb.set_trace()
     for epoch in range(ini_epoch,args.epochs):
-        if epoch%7==0:
-            seed = seed+1000
+        if epoch % 7==0:
+            seed = seed + 1000
             np.random.seed(seed)
             torch.manual_seed(seed)
             torch.cuda.manual_seed(seed)

@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+#ignore BIBEDV2
+data/BIPEDv2/
+
 # C extensions
 *.so
 
