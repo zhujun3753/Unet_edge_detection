@@ -464,7 +464,7 @@ def main(args):
         # Save model after end of every epoch
         torch.save(model.module.state_dict() if hasattr(model, "module") else model.state_dict(), os.path.join(output_dir_epoch, '{0}_model.pth'.format(epoch)))
         if tb_writer is not None:
-            tb_writer.add_scalar('loss',avg_loss,epoch+1)
+            tb_writer.add_scalar('loss', avg_loss, epoch+1)
         print('Current learning rate> ', optimizer.param_groups[0]['lr'])
     num_param = count_parameters(model)
     print('-------------------------------------------------------')
