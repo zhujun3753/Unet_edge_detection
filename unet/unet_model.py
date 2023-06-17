@@ -79,6 +79,9 @@ class UNet(nn.Module):
         return result_logits, decoded
 
 def compute_Image_gradients(x):
+    '''
+    returns a concatenation of the image, a smooth image and gradients of the image
+    '''
     # Convert the image to grayscale
     gray = cv2.cvtColor(x, cv2.COLOR_BGR2GRAY)
 
