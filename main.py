@@ -15,6 +15,9 @@ from model import DexiNed
 from utils import (image_normalization, save_image_batch_to_disk, visualize_result,count_parameters)
 from unet import UNet
 
+import torch.nn as nn
+import torch.nn.functional as F
+
 IS_LINUX = True if platform.system()=="Linux" else False
 
 def train_one_epoch(epoch, dataloader, model, criterion, criterion_reconstruction, optimizer, device, log_interval_vis, tb_writer, args=None):
@@ -28,7 +31,9 @@ def train_one_epoch(epoch, dataloader, model, criterion, criterion_reconstructio
     # l_weight = [[0.05, 2.], [0.05, 2.], [0.05, 2.],
     #             [0.1, 1.], [0.1, 1.], [0.1, 1.],
     #             [0.01, 4.]]  # for cats loss
-    loss_avg =[]
+    loss_avg = []
+    unet_loss_avg = []
+    reconstruction_loss_avg = []
     for batch_id, sample_batched in enumerate(dataloader):
         images = sample_batched['images'].to(device)  # BxCxHxW  torch.Size([8, 3, 352, 352])
         labels = sample_batched['labels'].to(device)  # BxHxW torch.Size([8, 1, 352, 352])
@@ -40,23 +45,30 @@ def train_one_epoch(epoch, dataloader, model, criterion, criterion_reconstructio
         #* preds_list[0].shape torch.Size([8, 1, 352, 352])
         # loss = sum([criterion(preds, labels, l_w, device) for preds, l_w in zip(preds_list, l_weight)])  # cats_loss
         # loss = sum([criterion(preds, labels,l_w) for preds, l_w in zip(preds_list,l_weight[:len(preds_list)])]) # bdcn_loss
-        unet_edge_loss = sum([criterion(preds, labels,l_w) for preds, l_w in zip(preds_list,l_weight[:len(preds_list)])]) # bdcn_loss
+        unet_edge_detection_loss = sum([criterion(preds, labels,l_w) for preds, l_w in zip(preds_list,l_weight[:len(preds_list)])]) # bdcn_loss
         # loss = sum([criterion(preds, labels) for preds in preds_list])  #HED loss, rcf_loss
 
         # loss for encoder decoder and add to current loss
         reconstruction_loss = criterion_reconstruction(decoded, images)
-        loss = unet_edge_loss + reconstruction_loss # both bdcn_loss and 
+        loss = unet_edge_detection_loss + reconstruction_loss # both bdcn_loss and 
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        unet_loss_avg.append(unet_edge_detection_loss.item())
+        reconstruction_loss_avg.append(reconstruction_loss.item())
         loss_avg.append(loss.item())
         if epoch==0 and (batch_id==100 and tb_writer is not None):
             tmp_loss = np.array(loss_avg).mean()
-            tb_writer.add_scalar('loss', tmp_loss,epoch)
+            tmp_unet_loss = np.array(unet_loss_avg).mean()
+            tmp_reconstruction_loss = np.array(reconstruction_loss_avg).mean()
+            tb_writer.add_scalar('Total loss', tmp_loss, epoch)
+            tb_writer.add_scalar('unet loss', tmp_unet_loss, epoch)
+            tb_writer.add_scalar('reconstruction loss', tmp_reconstruction_loss, epoch)
 
         if batch_id % 5 == 0:
             print(time.ctime(), 'Epoch: {0} Sample {1}/{2} Loss: {3}'.format(epoch, batch_id, len(dataloader), loss.item()))
+
         if batch_id % log_interval_vis == 0:
             res_data = []
             img = images.cpu().numpy()
@@ -331,12 +343,12 @@ def main(args):
     # Tensorboard summary writer
 
     tb_writer = None
-    training_dir = os.path.join(args.output_dir,args.train_data)
-    os.makedirs(training_dir, exist_ok=True)
+    training_dir = os.path.join(args.output_dir, args.train_data)
+    os.makedirs(training_dir, exist_ok = True)
     checkpoint_path = os.path.join(args.output_dir, args.train_data, args.checkpoint_data)
     if args.tensorboard and not args.is_testing:
         from torch.utils.tensorboard import SummaryWriter # for torch 1.4 or greather
-        tb_writer = SummaryWriter(log_dir=training_dir)
+        tb_writer = SummaryWriter(log_dir = training_dir)
         # saving Model training settings
         training_notes = ['DexiNed, Xavier Normal Init, LR= ' + str(args.lr) + ' WD= '
                           + str(args.wd) + ' image size = ' + str(args.img_width)
@@ -370,9 +382,9 @@ def main(args):
                                      train_mode='train',
                                      arg=args)
         dataloader_train = DataLoader(dataset_train,
-                                      batch_size=args.batch_size,
-                                      shuffle=True,
-                                      num_workers=args.workers)
+                                      batch_size = args.batch_size,
+                                      shuffle = True,
+                                      num_workers = args.workers)
 
     print('args.input_val_dir: ', args.input_val_dir)
     dataset_val = TestDataset(args.input_val_dir,
@@ -401,13 +413,14 @@ def main(args):
         print('-------------------------------------------------------')
         return
     criterion = bdcn_loss2 # hed_loss2 #bdcn_loss2
-    optimizer = optim.Adam(model.parameters(),lr=args.lr,weight_decay=args.wd)
+    criterion_reconstruction = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr = args.lr, weight_decay = args.wd)
     # Main training loop
-    seed=1021
+    seed = 1021
     adjust_lr = args.adjust_lr
     lr2= args.lr
     # import pdb;pdb.set_trace()
-    for epoch in range(ini_epoch,args.epochs):
+    for epoch in range(ini_epoch, args.epochs):
         if epoch % 7==0:
             seed = seed + 1000
             np.random.seed(seed)
@@ -435,6 +448,7 @@ def main(args):
                         dataloader_train,
                         model,
                         criterion,
+                        criterion_reconstruction,
                         optimizer,
                         device,
                         args.log_interval_vis,
