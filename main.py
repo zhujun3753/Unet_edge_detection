@@ -50,7 +50,7 @@ def train_one_epoch(epoch, dataloader, model, criterion, criterion_reconstructio
 
         # loss for encoder decoder and add to current loss
         reconstruction_loss = criterion_reconstruction(decoded, images)
-        loss = unet_edge_detection_loss + reconstruction_loss # both bdcn_loss and 
+        loss = unet_edge_detection_loss + reconstruction_loss # both bdcn_loss and encoder - decoder loss
 
         optimizer.zero_grad()
         loss.backward()
@@ -195,13 +195,13 @@ def testPich(checkpoint_path, dataloader, model, device, output_dir, args):
 
 def parse_args():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description='DexiNed trainer.')
+    parser = argparse.ArgumentParser(description='UNet trainer.')
     parser.add_argument('--choose_test_data',
                         type=int,
                         default=-1,
                         help='Already set the dataset for testing choice: 0 - 8')
     parser.add_argument('--is_testing',type=int,
-                        default=1,
+                        default = 0,
                         help='Script in testing mode.')
     # ----------- test -------0--
 
@@ -302,11 +302,11 @@ def parse_args():
                         help='Learning rate step size.') #[5,10]BIRND [10,15]BIPED/BRIND
     parser.add_argument('--batch_size',
                         type=int,
-                        default=16,
+                        default = 16,
                         metavar='B',
                         help='the mini-batch size (default: 8)')
     parser.add_argument('--workers',
-                        default=16,
+                        default = 4,
                         type=int,
                         help='The number of workers for the dataloaders.')
     parser.add_argument('--tensorboard',type=bool,
@@ -366,10 +366,10 @@ def main(args):
     if not args.use_unet:
         model = DexiNed().to(device) #* 35215245
     else:
-        model = UNet(n_channels=3, n_classes=1, bilinear=True).to(device) #* 17262977
+        model = UNet(n_channels = 3, n_classes = 1, bilinear = True).to(device) #* 17262977
     # preds_list=unet(images)
     # model = nn.DataParallel(model)
-    ini_epoch =0
+    ini_epoch = 0
     if not args.is_testing:
         if args.resume:
             ini_epoch=11
@@ -418,10 +418,10 @@ def main(args):
     # Main training loop
     seed = 1021
     adjust_lr = args.adjust_lr
-    lr2= args.lr
+    lr2 = args.lr
     # import pdb;pdb.set_trace()
     for epoch in range(ini_epoch, args.epochs):
-        if epoch % 7==0:
+        if epoch % 7 == 0:
             seed = seed + 1000
             np.random.seed(seed)
             torch.manual_seed(seed)
@@ -430,19 +430,19 @@ def main(args):
         # Create output directories
         if adjust_lr is not None:
             if epoch in adjust_lr:
-                lr2 = lr2*0.1
+                lr2 = lr2 * 0.1
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = lr2
-        output_dir_epoch = os.path.join(args.output_dir,args.train_data, str(epoch))
+        output_dir_epoch = os.path.join(args.output_dir, args.train_data, str(epoch))
         img_test_dir = os.path.join(output_dir_epoch, args.test_data + '_res')
         os.makedirs(output_dir_epoch,exist_ok=True)
         os.makedirs(img_test_dir,exist_ok=True)
-        validate_one_epoch(epoch,
-                           dataloader_val,
-                           model,
-                           device,
-                           img_test_dir,
-                           arg=args)
+        # validate_one_epoch(epoch,
+        #                    dataloader_val,
+        #                    model,
+        #                    device,
+        #                    img_test_dir,
+        #                    arg=args)
 
         avg_loss = train_one_epoch(epoch,
                         dataloader_train,
@@ -453,7 +453,7 @@ def main(args):
                         device,
                         args.log_interval_vis,
                         tb_writer,
-                        args=args)
+                        args = args)
         # validate_one_epoch(epoch,
         #                    dataloader_val,
         #                    model,

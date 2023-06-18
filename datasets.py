@@ -21,6 +21,7 @@ DATASET_NAMES = [
 ]  # 8
 
 
+
 def dataset_info(dataset_name, is_linux=True):
     if is_linux:
 
@@ -144,7 +145,7 @@ def dataset_info(dataset_name, is_linux=True):
                       'img_width': 1280,  # 1280
                       'test_list': 'test_pair.lst',
                       'train_list': 'train_rgb.lst',
-                      'data_dir': 'C:/Users/xavysp/dataset/BIPED',  # WIN: '../.../dataset/BIPED/edges'
+                      'data_dir': '/Users/emma/dev/Unet_edge_detection/data/BIPEDv2/BIPED',  # WIN: '../.../dataset/BIPED/edges'
                       'yita': 0.5},
             'CLASSIC': {'img_height': 512,
                         'img_width': 512,
