@@ -16,5 +16,7 @@ if __name__=='__main__':
      # for example if the data is in /home/user_name/datasets/BIPED
     #  put /home/home/user_name
     dataset_dir = 'data/BIPEDv2'
+     #  put /home/home/user_name
+    # dataset_dir = '/content/drive/MyDrive/datasets/BIPEDv2'
     augment_both = True  # to augment the RGB and target (edge_map) image at the same time
     augment_data(base_dir=dataset_dir, augment_both=True, use_all_type=True)
