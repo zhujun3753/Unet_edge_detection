@@ -82,6 +82,7 @@ class UNet(nn.Module):
         self.up3 = Up(256, 128 // factor, bilinear)
         self.up4 = Up(128, 64, bilinear)
         self.outc = OutConv(64, n_classes)
+        self.catc = DoubleConv(1024, 512)
 
     def forward(self, x):
         x_np = x.detach().cpu().numpy()
@@ -98,7 +99,9 @@ class UNet(nn.Module):
         x5 = self.down4(x4)
      
         # Concatenate the encoder output with the output of self.down3
-        x = self.up1(torch.cat([x5, encoded], dim=1), x4)
+        # import pdb;pdb.set_trace()
+        x5_encoded = self.catc(torch.cat([x5, encoded], dim=1))
+        x = self.up1(x5_encoded, x4)
         x = self.up2(x, x3)
         x = self.up3(x, x2)
         x = self.up4(x, x1)

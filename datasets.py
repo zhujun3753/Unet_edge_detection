@@ -24,7 +24,6 @@ DATASET_NAMES = [
 
 def dataset_info(dataset_name, is_linux=True):
     if is_linux:
-
         config = {
             'BSDS': {
                 'img_height': 512, #321
@@ -87,7 +86,7 @@ def dataset_info(dataset_name, is_linux=True):
                 'img_width': 1280, # 1280 5 1920
                 'test_list': 'test_pair.lst',
                 'train_list': 'train_rgb.lst',
-                'data_dir': 'data/BIPEDv2/BIPED',  # mean_rgb
+                'data_dir': '/home/zhujun/WS/UbuntuData/MVS/BIPEDv2/BIPED',  # mean_rgb
                 'yita': 0.5
             },
             'CLASSIC': {
