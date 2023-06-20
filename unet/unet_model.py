@@ -5,21 +5,9 @@ from .unet_parts import *
 
 
 class EncoderDecoder(nn.Module):
-    def __init__(self, input_channels, output_channels):
+    def __init__(self, input_channels):
         super(EncoderDecoder, self).__init__()
-        
-        # Encoder
-        # self.encoder = nn.Sequential(
-        #     nn.Conv2d(input_channels, 64, kernel_size = 3, stride=1, padding=1),
-        #     nn.ReLU(inplace=True),
-        #     nn.MaxPool2d(kernel_size = 2, stride = 2),
-        #     nn.Conv2d(64, 128, kernel_size = 3, stride=1, padding=1),
-        #     nn.ReLU(inplace=True),
-        #     nn.MaxPool2d(kernel_size=2, stride=2),
-        #     nn.Conv2d(128, 256, kernel_size = 3, stride = 1, padding=1),
-        #     nn.ReLU(inplace=True),
-        #     nn.MaxPool2d(kernel_size = 2, stride=2)
-        # )
+
 
         self.encoder = nn.Sequential(
             nn.Conv2d(input_channels, 64, kernel_size=3, stride=1, padding=1),
@@ -35,17 +23,6 @@ class EncoderDecoder(nn.Module):
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2)
         )
-        
-        # Decoder
-        # self.decoder = nn.Sequential(
-        #     nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2),
-        #     nn.ReLU(inplace=True),
-        #     nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2),
-        #     nn.ReLU(inplace=True),
-        #     nn.ConvTranspose2d(64, output_channels, kernel_size=2, stride=2),
-        #     nn.Sigmoid()
-        # )
-
 
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2),
@@ -54,7 +31,7 @@ class EncoderDecoder(nn.Module):
             nn.ReLU(inplace=True),
             nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(64, output_channels, kernel_size=2, stride=2),
+            nn.ConvTranspose2d(64, input_channels, kernel_size=2, stride=2),
             nn.Sigmoid()
         )
 
