@@ -113,7 +113,7 @@ def validate_one_epoch(epoch, dataloader, model, device, output_dir, arg=None):
             # labels = sample_batched['labels'].to(device)
             file_names = sample_batched['file_names']
             image_shape = sample_batched['image_shape']
-            preds = model(images)
+            preds, _ = model(images)
             # print('pred shape', preds[0].shape)
             save_image_batch_to_disk(preds[-1],
                                      output_dir,
@@ -141,7 +141,7 @@ def test(checkpoint_path, dataloader, model, device, output_dir, args):
             end = time.perf_counter()
             if device.type == 'cuda':
                 torch.cuda.synchronize()
-            preds = model(images)
+            preds,_ = model(images)
             if device.type == 'cuda':
                 torch.cuda.synchronize()
             tmp_duration = time.perf_counter() - end
@@ -176,8 +176,8 @@ def testPich(checkpoint_path, dataloader, model, device, output_dir, args):
             start_time = time.time()
             # images2 = images[:, [1, 0, 2], :, :]  #GBR
             images2 = images[:, [2, 1, 0], :, :] # RGB
-            preds = model(images)
-            preds2 = model(images2)
+            preds,_ = model(images)
+            preds2,_ = model(images2)
             tmp_duration = time.time() - start_time
             total_duration.append(tmp_duration)
             save_image_batch_to_disk([preds,preds2],
@@ -259,7 +259,7 @@ def parse_args():
                         help='True: use same 2 imgs changing channels')  # Just for test
     parser.add_argument('--resume',
                         type=bool,
-                        default=False,
+                        default=True,
                         help='use previous trained data')  # Just for test
     parser.add_argument('--checkpoint_data',
                         type=str,
@@ -306,7 +306,7 @@ def parse_args():
                         metavar='B',
                         help='the mini-batch size (default: 8)')
     parser.add_argument('--workers',
-                        default = 4,
+                        default = 16,
                         type=int,
                         help='The number of workers for the dataloaders.')
     parser.add_argument('--tensorboard',type=bool,
@@ -336,16 +336,23 @@ def parse_args():
 
 def main(args):
     """Main function."""
-
     print(f"Number of GPU's available: {torch.cuda.device_count()}")
     print(f"Pytorch version: {torch.__version__}")
-
     # Tensorboard summary writer
-
     tb_writer = None
     training_dir = os.path.join(args.output_dir, args.train_data)
     os.makedirs(training_dir, exist_ok = True)
-    checkpoint_path = os.path.join(args.output_dir, args.train_data, args.checkpoint_data)
+    candi_epoch = sorted([int(v) for v in os.listdir(os.path.join(args.output_dir, args.train_data)) if v.isdigit()], reverse=True)
+    candi_checkpoint_path = [os.path.join(args.output_dir, args.train_data,str(v), str(v)+'_model.pth') for v in candi_epoch]
+    ini_epoch = 0
+    for i in range(len(candi_epoch)):
+        candi_path = candi_checkpoint_path[i]
+        ini_epoch = candi_epoch[i]+1
+        if os.path.exists(candi_path):
+            checkpoint_path = candi_path
+            print("checkpoint_path: ", checkpoint_path)
+            break
+    # import pdb;pdb.set_trace()
     if args.tensorboard and not args.is_testing:
         from torch.utils.tensorboard import SummaryWriter # for torch 1.4 or greather
         tb_writer = SummaryWriter(log_dir = training_dir)
@@ -369,10 +376,8 @@ def main(args):
         model = UNet(n_channels = 3, n_classes = 1, bilinear = True).to(device) #* 17262977
     # preds_list=unet(images)
     # model = nn.DataParallel(model)
-    ini_epoch = 0
     if not args.is_testing:
         if args.resume:
-            ini_epoch=11
             model.load_state_dict(torch.load(checkpoint_path, map_location=device))
             print('Training restarted from> ',checkpoint_path)
         dataset_train = BipedDataset(args.input_dir,

@@ -68,6 +68,7 @@ def save_image_batch_to_disk(tensor, output_dir, file_names, img_shape=None, arg
         os.makedirs(output_dir_a, exist_ok=True)
         # 255.0 * (1.0 - em_a)
         edge_maps = []
+        import pdb;pdb.set_trace()
         for i in tensor:
             tmp = torch.sigmoid(i).cpu().detach().numpy()
             edge_maps.append(tmp)

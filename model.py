@@ -263,7 +263,7 @@ if __name__ == '__main__':
     # target = torch.rand(batch_size, 1, img_height, img_width).to(device)
     print(f"input shape: {input.shape}")
     model = DexiNed().to(device)
-    output = model(input)
+    output,_ = model(input)
     print(f"output shapes: {[t.shape for t in output]}")
 
     # for i in range(20000):

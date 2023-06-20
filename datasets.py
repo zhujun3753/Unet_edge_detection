@@ -192,7 +192,7 @@ class TestDataset(Dataset):
         sample_indices = []
         if self.test_data == "CLASSIC":
             # for single image testing
-            images_path = os.listdir(self.data_root)
+            images_path = [v for v in os.listdir(self.data_root) if '.png' in v or '.jpg' in v or '.bmp' in v]
             labels_path = None
             sample_indices = [images_path, labels_path]
         else:
@@ -243,7 +243,9 @@ class TestDataset(Dataset):
             img_dir = self.data_root
             gt_dir = self.data_root
         # load data
+        print(os.path.join(img_dir, image_path))
         image = cv2.imread(os.path.join(img_dir, image_path), cv2.IMREAD_COLOR)
+        # import pdb;pdb.set_trace()
         if not self.test_data == "CLASSIC":
             label = cv2.imread(os.path.join(gt_dir, label_path), cv2.IMREAD_COLOR)
         else:

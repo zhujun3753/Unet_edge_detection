@@ -5,4 +5,4 @@
 # python main.py --choose_test_data=-1
 
 #* 训练
-python main.py --is_testing=0
+python main.py --is_testing=1
