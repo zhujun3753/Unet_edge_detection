@@ -232,7 +232,7 @@ def parse_args():
                         help='the path to the directory with the input data for validation.')
     parser.add_argument('--output_dir',
                         type=str,
-                        default='unet_mycheckpoints',
+                        default='ecn_mycheckpoints',
                         help='the path to output the results.')
     parser.add_argument('--train_data',
                         type=str,
