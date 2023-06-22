@@ -85,3 +85,4 @@ def compute_Image_gradients(x):
     concatenated_smoothed_batch = np.array(concatenated_smoothed_batch)
     concatenated_smoothed_batch = np.transpose(concatenated_smoothed_batch, (0, 3, 1, 2))
     return concatenated_smoothed_batch
+

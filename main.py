@@ -143,7 +143,7 @@ def validate_one_epoch(epoch, dataloader, model, ecn_model, device, output_dir, 
             # labels = sample_batched['labels'].to(device)
             file_names = sample_batched['file_names']
             image_shape = sample_batched['image_shape']
-            preds, _ = model(images, encoded)
+            preds = model(images, encoded)
             # print('pred shape', preds[0].shape)
             save_image_batch_to_disk(preds[-1],
                                      output_dir,
@@ -176,7 +176,7 @@ def test(checkpoint_path, dataloader, model, ecn_model, device, output_dir, args
             # Forward pass
             encoded, _ = ecn_model(concatenated_smoothed_batch)
 
-            preds,_ = model(images, encoded)
+            preds = model(images, encoded)
             if device.type == 'cuda':
                 torch.cuda.synchronize()
             tmp_duration = time.perf_counter() - end
@@ -298,25 +298,25 @@ def parse_args():
                         help='Name of the dataset.')
     
     parser.add_argument('--test_data',
-                        type=str,
-                        choices=DATASET_NAMES,
-                        default=TEST_DATA,
-                        help='Name of the dataset.')
+                        type = str,
+                        choices = DATASET_NAMES,
+                        default = TEST_DATA,
+                        help = 'Name of the dataset.')
     
     parser.add_argument('--test_list',
-                        type=str,
-                        default=test_inf['test_list'],
-                        help='Dataset sample indices list.')
+                        type = str,
+                        default = test_inf['test_list'],
+                        help = 'Dataset sample indices list.')
     
     parser.add_argument('--train_list',
-                        type=str,
-                        default=train_inf['train_list'],
-                        help='Dataset sample indices list.')
+                        type = str,
+                        default = train_inf['train_list'],
+                        help = 'Dataset sample indices list.')
     
     parser.add_argument('--double_img',
-                        type=bool,
-                        default=False,
-                        help='True: use same 2 imgs changing channels')  # Just for test
+                        type = bool,
+                        default = False,
+                        help = 'True: use same 2 imgs changing channels')  # Just for test
     
     parser.add_argument('--checkpoint_data',
                         type=str,
@@ -331,12 +331,12 @@ def parse_args():
     parser.add_argument('--test_img_height',
                         type = int,
                         default = test_inf['img_height'],
-                        help='Image height for testing.')
+                        help = 'Image height for testing.')
     
     parser.add_argument('--res_dir',
                         type = str,
                         default = 'result',
-                        help='Result directory')
+                        help = 'Result directory')
     
     parser.add_argument('--log_interval_vis',
                         type = int,
@@ -351,6 +351,11 @@ def parse_args():
     
     parser.add_argument('--lr',
                         default = 1e-4,
+                        type = float,
+                        help='Initial learning rate.')
+    
+    parser.add_argument('--lr_ecn',
+                        default = 1e-3,
                         type = float,
                         help='Initial learning rate.')
     
@@ -373,7 +378,7 @@ def parse_args():
     parser.add_argument('--workers',
                         default = 16,
                         # default = 4,
-                        type=int,
+                        type = int,
                         help='The number of workers for the dataloaders.')
     
     parser.add_argument('--tensorboard',
@@ -399,8 +404,8 @@ def parse_args():
                         type=bool,
                         help='If true crop training images, else resize images to match image width and height.')
     parser.add_argument('--mean_pixel_values',
-                        default=[103.939, 116.779, 123.68, 137.86],
-                        type=float)  # [103.939,116.779,123.68] [104.00699, 116.66877, 122.67892]
+                        default = [103.939, 116.779, 123.68, 137.86],
+                        type = float)  # [103.939,116.779,123.68] [104.00699, 116.66877, 122.67892]
     args = parser.parse_args()
     return args
 
@@ -413,18 +418,18 @@ def main(args):
     #WANDB Setup to track hyper parameters
     wandb.init(
     # set the wandb project where this run will be logged
-    project="my-awesome-project",
-        
+    project="Unet-Edge-Detection",
         # track hyperparameters and run metadata
         config={
         "unet_learning_rate": args.lr,
+        "ecn_learning_rate" : args.lr_ecn,
         "architecture": "UNet + Encoder Decoder",
         "dataset": "MBIPED",
         "epochs": args.epochs,
+        "batch_size" : args.batch_size,
         "description" : "We seperate training the ECN from the Unet and prevent gradients from going back through both networks"
         }
     )
-
 
 
     # Tensorboard summary writer
@@ -511,7 +516,7 @@ def main(args):
     criterion = bdcn_loss2 # hed_loss2 #bdcn_loss2
     criterion_reconstruction = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr = args.lr, weight_decay = args.wd)
-    ecn_optimiser = optim.Adam(ecn_model.parameters(), lr = args.lr, weight_decay = args.wd)
+    ecn_optimiser = optim.Adam(ecn_model.parameters(), lr = args.lr_ecn, weight_decay = args.wd)
 
     # Main training loop
     seed = 1021
