@@ -348,8 +348,8 @@ def parse_args():
                         metavar='B',
                         help='the mini-batch size (default: 8)')
     parser.add_argument('--workers',
-                       # default = 16,
-                        default = 4,
+                        default = 16,
+                        # default = 4,
                         type=int,
                         help='The number of workers for the dataloaders.')
     
