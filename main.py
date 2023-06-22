@@ -62,7 +62,7 @@ def train_one_epoch(epoch, dataloader, model, ecn_model, criterion, criterion_re
 
         #recompute improved encoder without gradients
         with torch.no_grad():
-            encoded, decoded = ecn_model(concatenated_smoothed_batch)
+            encoded, _ = ecn_model(concatenated_smoothed_batch)
 
         preds_list = model(images, encoded.detach())
 
@@ -127,7 +127,7 @@ def train_one_epoch(epoch, dataloader, model, ecn_model, criterion, criterion_re
     return reconstruction_loss_avg , unet_edge_detection_loss
 
 
-def validate_one_epoch(epoch, dataloader, model, device, output_dir, arg=None):
+def validate_one_epoch(epoch, dataloader, model, ecn_model, device, output_dir, arg = None):
     # XXX This is not really validation, but testing
 
     # Put model in eval mode
@@ -135,17 +135,22 @@ def validate_one_epoch(epoch, dataloader, model, device, output_dir, arg=None):
     with torch.no_grad():
         for _, sample_batched in enumerate(dataloader):
             images = sample_batched['images'].to(device)
+            concatenated_smoothed_batch = compute_Image_gradients(images.cpu().numpy())
+            concatenated_smoothed_batch = torch.from_numpy(concatenated_smoothed_batch).to(device)
+            # Forward pass
+            encoded, _ = ecn_model(concatenated_smoothed_batch)
+
             # labels = sample_batched['labels'].to(device)
             file_names = sample_batched['file_names']
             image_shape = sample_batched['image_shape']
-            preds, _ = model(images)
+            preds, _ = model(images, encoded)
             # print('pred shape', preds[0].shape)
             save_image_batch_to_disk(preds[-1],
                                      output_dir,
                                      file_names,img_shape=image_shape,
                                      arg=arg)
 
-def test(checkpoint_path, dataloader, model, device, output_dir, args):
+def test(checkpoint_path, dataloader, model, ecn_model, device, output_dir, args):
     if not os.path.isfile(checkpoint_path):
         raise FileNotFoundError(
             f"Checkpoint filte note found: {checkpoint_path}")
@@ -166,7 +171,12 @@ def test(checkpoint_path, dataloader, model, device, output_dir, args):
             end = time.perf_counter()
             if device.type == 'cuda':
                 torch.cuda.synchronize()
-            preds,_ = model(images)
+            concatenated_smoothed_batch = compute_Image_gradients(images.cpu().numpy())
+            concatenated_smoothed_batch = torch.from_numpy(concatenated_smoothed_batch).to(device)
+            # Forward pass
+            encoded, _ = ecn_model(concatenated_smoothed_batch)
+
+            preds,_ = model(images, encoded)
             if device.type == 'cuda':
                 torch.cuda.synchronize()
             tmp_duration = time.perf_counter() - end
@@ -177,7 +187,7 @@ def test(checkpoint_path, dataloader, model, device, output_dir, args):
     print("******** Testing finished in", args.test_data, "dataset. *****")
     print("FPS: %f.4" % (len(dataloader)/total_duration))
 
-def testPich(checkpoint_path, dataloader, model, device, output_dir, args):
+def testPich(checkpoint_path, dataloader, model, ecn_model, device, output_dir, args):
     # a test model plus the interganged channels
     if not os.path.isfile(checkpoint_path):
         raise FileNotFoundError(
@@ -201,15 +211,28 @@ def testPich(checkpoint_path, dataloader, model, device, output_dir, args):
             start_time = time.time()
             # images2 = images[:, [1, 0, 2], :, :]  #GBR
             images2 = images[:, [2, 1, 0], :, :] # RGB
-            preds,_ = model(images)
-            preds2,_ = model(images2)
+
+            concatenated_smoothed_batch = compute_Image_gradients(images.cpu().numpy())
+            concatenated_smoothed_batch = torch.from_numpy(concatenated_smoothed_batch).to(device)
+            # Forward pass
+            encoded, _ = ecn_model(concatenated_smoothed_batch)
+
+            preds = model(images, encoded)
+
+            concatenated_smoothed_batch2 = compute_Image_gradients(images2.cpu().numpy())
+            concatenated_smoothed_batch2= torch.from_numpy(concatenated_smoothed_batch2).to(device)
+            # Forward pass
+            encoded2, _ = ecn_model(concatenated_smoothed_batch2)
+
+            preds2 = model(images2, encoded2)
             tmp_duration = time.time() - start_time
             total_duration.append(tmp_duration)
             save_image_batch_to_disk([preds,preds2],
                                      output_dir,
                                      file_names,
                                      image_shape,
-                                     arg=args, is_inchannel=True)
+                                     arg = args, 
+                                     is_inchannel = True)
             torch.cuda.empty_cache()
 
     total_duration = np.array(total_duration)
@@ -353,18 +376,19 @@ def parse_args():
                         type=int,
                         help='The number of workers for the dataloaders.')
     
-    parser.add_argument('--tensorboard',type=bool,
+    parser.add_argument('--tensorboard',
+                        type = bool,
                         default = False,
                         help='Use Tensorboard for logging.'),
     
     parser.add_argument('--img_width',
-                        type=int,
+                        type = int,
                         default = 352,
                         help='Image width for training.') # BIPED 400 BSDS 352/320 MDBD 480
     
     parser.add_argument('--img_height',
-                        type=int,
-                        default=352,
+                        type = int,
+                        default = 352,
                         help='Image height for training.') # BIPED 480 BSDS 352/320
     
     parser.add_argument('--channel_swap',
@@ -375,7 +399,7 @@ def parse_args():
                         type=bool,
                         help='If true crop training images, else resize images to match image width and height.')
     parser.add_argument('--mean_pixel_values',
-                        default=[103.939,116.779,123.68, 137.86],
+                        default=[103.939, 116.779, 123.68, 137.86],
                         type=float)  # [103.939,116.779,123.68] [104.00699, 116.66877, 122.67892]
     args = parser.parse_args()
     return args
