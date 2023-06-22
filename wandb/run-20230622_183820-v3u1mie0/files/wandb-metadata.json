@@ -1,0 +1,42 @@
+{
+    "os": "macOS-10.16-x86_64-i386-64bit",
+    "python": "3.9.12",
+    "heartbeatAt": "2023-06-22T17:38:22.400530",
+    "startedAt": "2023-06-22T17:38:20.529129",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "/Users/emma/dev/Unet_edge_detection/main.py",
+    "codePath": "main.py",
+    "git": {
+        "remote": "https://github.com/zhujun3753/Unet_edge_detection.git",
+        "commit": "103b4d1f247f073084e61dadb72e6bdf2bdb195b"
+    },
+    "email": "oluwatosinoseni@gmail.com",
+    "root": "/Users/emma/dev/Unet_edge_detection",
+    "host": "Tosins-Air-2",
+    "username": "emma",
+    "executable": "/Users/emma/dev/Unet_edge_detection/venv/bin/python",
+    "cpu_count": 2,
+    "cpu_count_logical": 4,
+    "cpu_freq": {
+        "current": 1600,
+        "min": 1600,
+        "max": 1600
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 1600,
+            "min": 1600,
+            "max": 1600
+        }
+    ],
+    "disk": {
+        "total": 203.4921646118164,
+        "used": 8.454479217529297
+    },
+    "memory": {
+        "total": 8.0
+    }
+}

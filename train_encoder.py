@@ -21,7 +21,7 @@ IS_LINUX = True if platform.system() == "Linux" else False
 
 def train_one_epoch(epoch, dataloader, model, criterion_reconstruction, optimizer, device, tb_writer, args=None):
     imgs_res_folder = os.path.join(args.output_dir, 'current_res')
-    os.makedirs(imgs_res_folder,exist_ok=True)
+    os.makedirs(imgs_res_folder, exist_ok=True)
     # Put model in training mode
     model.train()
 

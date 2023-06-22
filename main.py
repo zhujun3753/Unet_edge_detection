@@ -14,61 +14,16 @@ from losses import *
 from model import DexiNed
 from utils import (image_normalization, save_image_batch_to_disk, visualize_result,count_parameters)
 from unet import UNet
+from unet import  EncoderDecoder, compute_Image_gradients
+import wandb
 
 import torch.nn as nn
 import torch.nn.functional as F
 
 IS_LINUX = True if platform.system()=="Linux" else False
 
-def compute_Image_gradients(x):
-    '''
-    returns a concatenation of the image, a smooth image and gradients of the image
-    '''
-    # Convert the image to grayscale
-    concatenated_smoothed_batch = []
-    for image_ in x:
-        bgr_image = cv2.cvtColor(image_.transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
-        gray = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
-
-        # Apply Gaussian smoothing
-        smoothed = cv2.GaussianBlur(gray, (3, 3), 0)
-
-        # Compute gradients using the Sobel operator
-        gradient_x = cv2.Sobel(smoothed, cv2.CV_64F, 1, 0, ksize=3)
-        gradient_y = cv2.Sobel(smoothed, cv2.CV_64F, 0, 1, ksize=3)
-
-        # Compute gradient magnitude
-        gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
-
-        # Normalize gradients
-        gradient_x_normalized = cv2.normalize(gradient_x, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-        gradient_y_normalized = cv2.normalize(gradient_y, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-        gradient_magnitude_normalized = cv2.normalize(gradient_magnitude, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-
-        # Create separate channels for gradients
-        gradient_channels = np.zeros((gradient_x.shape[0], gradient_x.shape[1], 3), dtype = np.uint8)
-        gradient_channels[:,:,0] = gradient_x_normalized
-        gradient_channels[:,:,1] = gradient_y_normalized
-        gradient_channels[:,:,2] = gradient_magnitude_normalized
-
-        # Concatenate gradient channels with the original image
-        concatenated = np.concatenate((bgr_image, gradient_channels), axis=2)
-
-        smoothed_reshaped = smoothed[:, :, np.newaxis]
-
-        # Concatenate smoothed image with the concatenated image
-        concatenated_smoothed = np.concatenate((smoothed_reshaped, concatenated), axis=2)
-        concatenated_smoothed_normalized = concatenated_smoothed / 255.0
-
-        concatenated_smoothed_batch.append(concatenated_smoothed_normalized)
-
-     # Convert the list of results to a NumPy array
-    concatenated_smoothed_batch = np.array(concatenated_smoothed_batch)
-    concatenated_smoothed_batch = np.transpose(concatenated_smoothed_batch, (0, 3, 1, 2))
-    return concatenated_smoothed_batch
-
-
-def train_one_epoch(epoch, dataloader, model, criterion, criterion_reconstruction, optimizer, device, log_interval_vis, tb_writer, args=None):
+def train_one_epoch(epoch, dataloader, model, ecn_model, criterion, criterion_reconstruction, optimizer, ecn_optimiser,\
+                     device, log_interval_vis, tb_writer, args = None):
     imgs_res_folder = os.path.join(args.output_dir, 'current_res')
     os.makedirs(imgs_res_folder,exist_ok=True)
     # Put model in training mode
@@ -79,46 +34,63 @@ def train_one_epoch(epoch, dataloader, model, criterion, criterion_reconstructio
     # l_weight = [[0.05, 2.], [0.05, 2.], [0.05, 2.],
     #             [0.1, 1.], [0.1, 1.], [0.1, 1.],
     #             [0.01, 4.]]  # for cats loss
-    loss_avg = []
     unet_loss_avg = []
     reconstruction_loss_avg = []
     for batch_id, sample_batched in enumerate(dataloader):
         images = sample_batched['images'].to(device)  # BxCxHxW  torch.Size([8, 3, 352, 352])
         labels = sample_batched['labels'].to(device)  # BxHxW torch.Size([8, 1, 352, 352])
-        preds_list, decoded = model(images)
-        # unet = UNet(n_channels=3, n_classes=1, bilinear=True)
-        # preds_list=unet(images)
-        # unet.to(device=device)
-        # import pdb;pdb.set_trace()
-        #* preds_list[0].shape torch.Size([8, 1, 352, 352])
-        # loss = sum([criterion(preds, labels, l_w, device) for preds, l_w in zip(preds_list, l_weight)])  # cats_loss
-        # loss = sum([criterion(preds, labels,l_w) for preds, l_w in zip(preds_list,l_weight[:len(preds_list)])]) # bdcn_loss
-        unet_edge_detection_loss = sum([criterion(preds, labels,l_w) for preds, l_w in zip(preds_list,l_weight[:len(preds_list)])]) # bdcn_loss
-        # loss = sum([criterion(preds, labels) for preds in preds_list])  #HED loss, rcf_loss
 
-        # loss for encoder decoder and add to current loss
-        # import pdb;pdb.set_trace()
+        ###############           train the encoder decoder Start     ################################
+
         concatenated_smoothed_batch = compute_Image_gradients(images.cpu().numpy())
         concatenated_smoothed_batch = torch.from_numpy(concatenated_smoothed_batch).to(device)
+        # Forward pass
+        encoded, decoded = ecn_model(concatenated_smoothed_batch)
+
+        # loss for encoder decoder and add to current loss
         reconstruction_loss = criterion_reconstruction(decoded, concatenated_smoothed_batch)
-        loss = unet_edge_detection_loss + reconstruction_loss # both bdcn_loss and encoder - decoder loss
+        ecn_optimiser.zero_grad()
+        reconstruction_loss.backward()
+        ecn_optimiser.step()
+        reconstruction_loss_avg.append(reconstruction_loss.item())
+
+        ###############        train the encoder decoder End         ################################
+
+
+
+        #########################           train Unet Start     ################################
+
+        #recompute improved encoder without gradients
+        with torch.no_grad():
+            encoded, decoded = ecn_model(concatenated_smoothed_batch)
+
+        preds_list = model(images, encoded.detach())
+
+        unet_loss = sum([criterion(preds, labels,l_w) for preds, l_w in zip(preds_list,l_weight[:len(preds_list)])]) # bdcn_loss
 
         optimizer.zero_grad()
-        loss.backward()
+        unet_loss.backward()
         optimizer.step()
-        unet_loss_avg.append(unet_edge_detection_loss.item())
-        reconstruction_loss_avg.append(reconstruction_loss.item())
-        loss_avg.append(loss.item())
-        if (batch_id==100 and tb_writer is not None):
-            tmp_loss = np.array(loss_avg).mean()
+        unet_loss_avg.append(unet_loss.item())
+
+        ##########################           train Unet End     ################################
+
+        # if (batch_id == 100 and tb_writer is not None):
+        #     tmp_unet_loss = np.array(unet_loss_avg).mean()
+        #     tmp_reconstruction_loss = np.array(reconstruction_loss_avg).mean()
+        #     tb_writer.add_scalar('Tmp Unet loss', tmp_unet_loss, epoch)
+        #     tb_writer.add_scalar('Tmp Reconstruction loss', tmp_reconstruction_loss, epoch)
+
+        
+        if (batch_id % 100 == 0):
             tmp_unet_loss = np.array(unet_loss_avg).mean()
             tmp_reconstruction_loss = np.array(reconstruction_loss_avg).mean()
-            tb_writer.add_scalar('Total loss', tmp_loss, epoch)
-            tb_writer.add_scalar('unet loss', tmp_unet_loss, epoch)
-            tb_writer.add_scalar('reconstruction loss', tmp_reconstruction_loss, epoch)
+            wandb.log({"Tmp Unet loss": tmp_unet_loss, "Tmp Reconstruction loss": tmp_reconstruction_loss})
 
+            
         if batch_id % 5 == 0:
-            print(time.ctime(), 'Epoch: {0} Sample {1}/{2} Loss: {3}'.format(epoch, batch_id, len(dataloader), loss.item()))
+            print(time.ctime(), 'Epoch: {0} Sample {1}/{2} Unet Loss: {3} ECN Loss : {4}'.format(epoch, batch_id, \
+                            len(dataloader), unet_loss.item(), reconstruction_loss.item() ))
 
         if batch_id % log_interval_vis == 0:
             res_data = []
@@ -137,7 +109,8 @@ def train_one_epoch(epoch, dataloader, model, criterion, criterion_reconstructio
             vis_imgs = visualize_result(res_data, arg=args)
             del tmp, res_data
             vis_imgs = cv2.resize(vis_imgs, (int(vis_imgs.shape[1]*0.8), int(vis_imgs.shape[0]*0.8)))
-            img_test = 'Epoch: {0} Sample {1}/{2} Loss: {3}'.format(epoch, batch_id, len(dataloader), loss.item())
+            img_test = 'Epoch: {0} Sample {1}/{2} Unet Loss: {3} ECN Loss : {4}'.format(epoch, batch_id, \
+                                        len(dataloader), unet_loss.item(), reconstruction_loss.item())
             BLACK = (0, 0, 255)
             font = cv2.FONT_HERSHEY_SIMPLEX
             font_size = 1.1
@@ -149,8 +122,9 @@ def train_one_epoch(epoch, dataloader, model, criterion, criterion_reconstructio
                                    (x, y),
                                    font, font_size, font_color, font_thickness, cv2.LINE_AA)
             cv2.imwrite(os.path.join(imgs_res_folder, 'results.png'), vis_imgs)
-    loss_avg = np.array(loss_avg).mean()
-    return loss_avg
+    reconstruction_loss_avg = np.array(reconstruction_loss_avg).mean()
+    unet_edge_detection_loss = np.array(unet_edge_detection_loss).mean()
+    return reconstruction_loss_avg , unet_edge_detection_loss
 
 
 def validate_one_epoch(epoch, dataloader, model, device, output_dir, arg=None):
@@ -248,15 +222,16 @@ def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description='UNet trainer.')
     parser.add_argument('--choose_test_data',
-                        type=int,
-                        default=-1,
+                        type = int,
+                        default = -1,
                         help='Already set the dataset for testing choice: 0 - 8')
-    parser.add_argument('--is_testing',type=int,
+    parser.add_argument('--is_testing',
+                        type = int,
                         default = 0,
                         help='Script in testing mode.')
     parser.add_argument('--resume',
-                        type =  int,
-                        default = 1,
+                        type =  bool,
+                        default = False,
                         help = 'use previous trained data')  # Just for test
     # ----------- test -------0--
 
@@ -277,32 +252,39 @@ def parse_args():
                         type=bool,
                         default=True,
                         help='True: use same 2 imgs changing channels')
+    
     parser.add_argument('--input_dir',
                         type=str,
                         default=train_dir,
                         help='the path to the directory with the input data.')
+    
     parser.add_argument('--input_val_dir',
                         type=str,
                         default=test_inf['data_dir'],
                         help='the path to the directory with the input data for validation.')
+    
     parser.add_argument('--output_dir',
                         type=str,
                         default='ecn_mycheckpoints',
                         help='the path to output the results.')
+    
     parser.add_argument('--train_data',
                         type=str,
                         choices=DATASET_NAMES,
                         default=TRAIN_DATA,
                         help='Name of the dataset.')
+    
     parser.add_argument('--test_data',
                         type=str,
                         choices=DATASET_NAMES,
                         default=TEST_DATA,
                         help='Name of the dataset.')
+    
     parser.add_argument('--test_list',
                         type=str,
                         default=test_inf['test_list'],
                         help='Dataset sample indices list.')
+    
     parser.add_argument('--train_list',
                         type=str,
                         default=train_inf['train_list'],
@@ -313,23 +295,24 @@ def parse_args():
                         default=False,
                         help='True: use same 2 imgs changing channels')  # Just for test
     
-    
     parser.add_argument('--checkpoint_data',
                         type=str,
                         default='24/24_model.pth',# 4 6 7 9 14
                         help='Checkpoint path from which to restore model weights from.')
+    
     parser.add_argument('--test_img_width',
-                        type=int,
-                        default=test_inf['img_width'],
+                        type = int,
+                        default = test_inf['img_width'],
                         help='Image width for testing.')
+    
     parser.add_argument('--test_img_height',
-                        type=int,
-                        default=test_inf['img_height'],
+                        type = int,
+                        default = test_inf['img_height'],
                         help='Image height for testing.')
     
     parser.add_argument('--res_dir',
-                        type=str,
-                        default='result',
+                        type = str,
+                        default = 'result',
                         help='Result directory')
     
     parser.add_argument('--log_interval_vis',
@@ -347,36 +330,43 @@ def parse_args():
                         default = 1e-4,
                         type = float,
                         help='Initial learning rate.')
+    
     parser.add_argument('--wd',
                         type=float,
                         default=1e-8,
                         metavar='WD',
                         help='weight decay (Good 1e-8) in TF1=0') # 1e-8 -> BIRND/MDBD, 0.0 -> BIPED
+    
     parser.add_argument('--adjust_lr',
                         default=[10,15],
                         type=int,
                         help='Learning rate step size.') #[5,10]BIRND [10,15]BIPED/BRIND
+    
     parser.add_argument('--batch_size',
                         type=int,
-                        default = 16,
+                        default = 8,
                         metavar='B',
                         help='the mini-batch size (default: 8)')
     parser.add_argument('--workers',
-                        default = 16,
-                        # default = 4,
+                       # default = 16,
+                        default = 4,
                         type=int,
                         help='The number of workers for the dataloaders.')
+    
     parser.add_argument('--tensorboard',type=bool,
-                        default=True,
+                        default = False,
                         help='Use Tensorboard for logging.'),
+    
     parser.add_argument('--img_width',
                         type=int,
                         default = 352,
                         help='Image width for training.') # BIPED 400 BSDS 352/320 MDBD 480
+    
     parser.add_argument('--img_height',
                         type=int,
                         default=352,
                         help='Image height for training.') # BIPED 480 BSDS 352/320
+    
     parser.add_argument('--channel_swap',
                         default = [2, 1, 0],
                         type=int)
@@ -395,6 +385,24 @@ def main(args):
     """Main function."""
     print(f"Number of GPU's available: {torch.cuda.device_count()}")
     print(f"Pytorch version: {torch.__version__}")
+
+    #WANDB Setup to track hyper parameters
+    wandb.init(
+    # set the wandb project where this run will be logged
+    project="my-awesome-project",
+        
+        # track hyperparameters and run metadata
+        config={
+        "unet_learning_rate": args.lr,
+        "architecture": "UNet + Encoder Decoder",
+        "dataset": "MBIPED",
+        "epochs": args.epochs,
+        "description" : "We seperate training the ECN from the Unet and prevent gradients from going back through both networks"
+        }
+    )
+
+
+
     # Tensorboard summary writer
     tb_writer = None
     training_dir = os.path.join(args.output_dir, args.train_data)
@@ -410,19 +418,19 @@ def main(args):
                 checkpoint_path = candi_path
                 print("checkpoint_path: ", checkpoint_path)
                 break
-    # import pdb;pdb.set_trace()
-    if args.tensorboard and not args.is_testing:
-        from torch.utils.tensorboard import SummaryWriter # for torch 1.4 or greather
-        tb_writer = SummaryWriter(log_dir = training_dir)
-        # saving Model training settings
-        training_notes = ['DexiNed, Xavier Normal Init, LR= ' + str(args.lr) + ' WD= '
-                          + str(args.wd) + ' image size = ' + str(args.img_width)
-                          + ' adjust LR='+ str(args.adjust_lr) + ' Loss Function= BDCNloss2. '
-                          +'Trained on> '+args.train_data+' Tested on> '
-                          +args.test_data+' Batch size= '+str(args.batch_size)+' '+str(time.asctime())]
-        info_txt = open(os.path.join(training_dir, 'training_settings.txt'), 'w')
-        info_txt.write(str(training_notes))
-        info_txt.close()
+    # # import pdb;pdb.set_trace()
+    # if args.tensorboard and not args.is_testing:
+    #     from torch.utils.tensorboard import SummaryWriter # for torch 1.4 or greather
+    #     tb_writer = SummaryWriter(log_dir = training_dir)
+    #     # saving Model training settings
+    #     training_notes = ['DexiNed, Xavier Normal Init, LR= ' + str(args.lr) + ' WD= '
+    #                       + str(args.wd) + ' image size = ' + str(args.img_width)
+    #                       + ' adjust LR='+ str(args.adjust_lr) + ' Loss Function= BDCNloss2. '
+    #                       +'Trained on> '+args.train_data+' Tested on> '
+    #                       +args.test_data+' Batch size= '+str(args.batch_size)+' '+str(time.asctime())]
+    #     info_txt = open(os.path.join(training_dir, 'training_settings.txt'), 'w')
+    #     info_txt.write(str(training_notes))
+    #     info_txt.close()
 
     # Get computing device
     device = torch.device('cpu' if torch.cuda.device_count() == 0 else 'cuda')
@@ -432,18 +440,18 @@ def main(args):
         model = DexiNed().to(device) #* 35215245
     else:
         model = UNet(n_channels = 3, n_classes = 1, bilinear = True).to(device) #* 17262977
-    # preds_list=unet(images)
-    # model = nn.DataParallel(model)
+
+    ecn_model = EncoderDecoder(input_channels = 7).to(device)
     if not args.is_testing:
         if args.resume:
             model.load_state_dict(torch.load(checkpoint_path, map_location=device))
             print('Training restarted from> ',checkpoint_path)
         dataset_train = BipedDataset(args.input_dir,
-                                     img_width=args.img_width,
-                                     img_height=args.img_height,
-                                     mean_bgr=args.mean_pixel_values[0:3] if len(args.mean_pixel_values) == 4 else args.mean_pixel_values,
-                                     train_mode='train',
-                                     arg=args)
+                                     img_width = args.img_width,
+                                     img_height = args.img_height,
+                                     mean_bgr = args.mean_pixel_values[0:3] if len(args.mean_pixel_values) == 4 else args.mean_pixel_values,
+                                     train_mode = 'train',
+                                     arg = args)
         dataloader_train = DataLoader(dataset_train,
                                       batch_size = args.batch_size,
                                       shuffle = True,
@@ -475,9 +483,12 @@ def main(args):
         print(num_param)
         print('-------------------------------------------------------')
         return
+    
     criterion = bdcn_loss2 # hed_loss2 #bdcn_loss2
     criterion_reconstruction = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr = args.lr, weight_decay = args.wd)
+    ecn_optimiser = optim.Adam(ecn_model.parameters(), lr = args.lr, weight_decay = args.wd)
+
     # Main training loop
     seed = 1021
     adjust_lr = args.adjust_lr
@@ -499,7 +510,7 @@ def main(args):
         output_dir_epoch = os.path.join(args.output_dir, args.train_data, str(epoch))
         img_test_dir = os.path.join(output_dir_epoch, args.test_data + '_res')
         os.makedirs(output_dir_epoch,exist_ok=True)
-        os.makedirs(img_test_dir,exist_ok=True)
+        os.makedirs(img_test_dir, exist_ok=True)
         # validate_one_epoch(epoch,
         #                    dataloader_val,
         #                    model,
@@ -507,16 +518,18 @@ def main(args):
         #                    img_test_dir,
         #                    arg=args)
 
-        avg_loss = train_one_epoch(epoch,
-                        dataloader_train,
-                        model,
-                        criterion,
-                        criterion_reconstruction,
-                        optimizer,
-                        device,
-                        args.log_interval_vis,
-                        tb_writer,
-                        args = args)
+        avg_unet_loss, avg_ecn_loss = train_one_epoch(epoch,
+                                        dataloader_train,
+                                        model,
+                                        ecn_model,
+                                        criterion,
+                                        criterion_reconstruction,
+                                        optimizer,
+                                        ecn_optimiser,
+                                        device,
+                                        args.log_interval_vis,
+                                        tb_writer,
+                                        args = args)
         # validate_one_epoch(epoch,
         #                    dataloader_val,
         #                    model,
@@ -526,8 +539,10 @@ def main(args):
 
         # Save model after end of every epoch
         torch.save(model.module.state_dict() if hasattr(model, "module") else model.state_dict(), os.path.join(output_dir_epoch, '{0}_model.pth'.format(epoch)))
-        if tb_writer is not None:
-            tb_writer.add_scalar('loss', avg_loss, epoch+1)
+        # if tb_writer is not None:
+        #     tb_writer.add_scalar('loss', avg_loss, epoch+1)
+
+        wandb.log({"Unet loss": avg_unet_loss, "Ecn_loss": avg_ecn_loss})
         print('Current learning rate> ', optimizer.param_groups[0]['lr'])
     num_param = count_parameters(model)
     print('-------------------------------------------------------')
