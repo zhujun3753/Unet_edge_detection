@@ -101,11 +101,11 @@ def parse_args():
                         help='Result directory')
     parser.add_argument('--epochs',
                         type=int,
-                        default=50,
+                        default = 50,
                         metavar='N',
                         help='Number of training epochs (default: 25).')
     parser.add_argument('--lr',
-                        default=1e-4,
+                        default=1e-3,
                         type=float,
                         help='Initial learning rate.')
     parser.add_argument('--wd',
@@ -115,12 +115,12 @@ def parse_args():
                         help='weight decay (Good 1e-8) in TF1=0') # 1e-8 -> BIRND/MDBD, 0.0 -> BIPED
     parser.add_argument('--batch_size',
                         type=int,
-                        default = 16,
+                        default = 32,
                         metavar='B',
                         help='the mini-batch size (default: 8)')
     parser.add_argument('--workers',
-                        default = 16,
-                        # default = 4,
+                        # default = 16,
+                        default = 4,
                         type=int,
                         help='The number of workers for the dataloaders.')
     parser.add_argument('--tensorboard',type=bool,

@@ -58,7 +58,7 @@ def train_one_epoch(epoch, dataloader, model, criterion, criterion_reconstructio
         unet_loss_avg.append(unet_edge_detection_loss.item())
         reconstruction_loss_avg.append(reconstruction_loss.item())
         loss_avg.append(loss.item())
-        if epoch==0 and (batch_id==100 and tb_writer is not None):
+        if (batch_id==100 and tb_writer is not None):
             tmp_loss = np.array(loss_avg).mean()
             tmp_unet_loss = np.array(unet_loss_avg).mean()
             tmp_reconstruction_loss = np.array(reconstruction_loss_avg).mean()
@@ -257,10 +257,11 @@ def parse_args():
                         type=bool,
                         default=False,
                         help='True: use same 2 imgs changing channels')  # Just for test
+    
     parser.add_argument('--resume',
-                        type=bool,
-                        default=True,
-                        help='use previous trained data')  # Just for test
+                        type =  bool,
+                        default = True,
+                        help = 'use previous trained data')  # Just for test
     parser.add_argument('--checkpoint_data',
                         type=str,
                         default='24/24_model.pth',# 4 6 7 9 14
@@ -273,23 +274,26 @@ def parse_args():
                         type=int,
                         default=test_inf['img_height'],
                         help='Image height for testing.')
+    
     parser.add_argument('--res_dir',
                         type=str,
                         default='result',
                         help='Result directory')
+    
     parser.add_argument('--log_interval_vis',
-                        type=int,
-                        default=50,
+                        type = int,
+                        default = 50,
                         help='The number of batches to wait before printing test predictions.')
 
     parser.add_argument('--epochs',
-                        type=int,
-                        default=25,
-                        metavar='N',
+                        type = int,
+                        default = 25,
+                        metavar = 'N',
                         help='Number of training epochs (default: 25).')
+    
     parser.add_argument('--lr',
-                        default=1e-4,
-                        type=float,
+                        default = 1e-4,
+                        type = float,
                         help='Initial learning rate.')
     parser.add_argument('--wd',
                         type=float,
@@ -307,6 +311,7 @@ def parse_args():
                         help='the mini-batch size (default: 8)')
     parser.add_argument('--workers',
                         default = 16,
+                        # default = 4,
                         type=int,
                         help='The number of workers for the dataloaders.')
     parser.add_argument('--tensorboard',type=bool,
@@ -314,14 +319,14 @@ def parse_args():
                         help='Use Tensorboard for logging.'),
     parser.add_argument('--img_width',
                         type=int,
-                        default=352,
+                        default = 352,
                         help='Image width for training.') # BIPED 400 BSDS 352/320 MDBD 480
     parser.add_argument('--img_height',
                         type=int,
                         default=352,
                         help='Image height for training.') # BIPED 480 BSDS 352/320
     parser.add_argument('--channel_swap',
-                        default=[2, 1, 0],
+                        default = [2, 1, 0],
                         type=int)
     parser.add_argument('--crop_img',
                         default=True,
