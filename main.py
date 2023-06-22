@@ -20,6 +20,54 @@ import torch.nn.functional as F
 
 IS_LINUX = True if platform.system()=="Linux" else False
 
+def compute_Image_gradients(x):
+    '''
+    returns a concatenation of the image, a smooth image and gradients of the image
+    '''
+    # Convert the image to grayscale
+    concatenated_smoothed_batch = []
+    for image_ in x:
+        bgr_image = cv2.cvtColor(image_.transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
+        gray = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
+
+        # Apply Gaussian smoothing
+        smoothed = cv2.GaussianBlur(gray, (3, 3), 0)
+
+        # Compute gradients using the Sobel operator
+        gradient_x = cv2.Sobel(smoothed, cv2.CV_64F, 1, 0, ksize=3)
+        gradient_y = cv2.Sobel(smoothed, cv2.CV_64F, 0, 1, ksize=3)
+
+        # Compute gradient magnitude
+        gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
+
+        # Normalize gradients
+        gradient_x_normalized = cv2.normalize(gradient_x, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+        gradient_y_normalized = cv2.normalize(gradient_y, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+        gradient_magnitude_normalized = cv2.normalize(gradient_magnitude, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+
+        # Create separate channels for gradients
+        gradient_channels = np.zeros((gradient_x.shape[0], gradient_x.shape[1], 3), dtype = np.uint8)
+        gradient_channels[:,:,0] = gradient_x_normalized
+        gradient_channels[:,:,1] = gradient_y_normalized
+        gradient_channels[:,:,2] = gradient_magnitude_normalized
+
+        # Concatenate gradient channels with the original image
+        concatenated = np.concatenate((bgr_image, gradient_channels), axis=2)
+
+        smoothed_reshaped = smoothed[:, :, np.newaxis]
+
+        # Concatenate smoothed image with the concatenated image
+        concatenated_smoothed = np.concatenate((smoothed_reshaped, concatenated), axis=2)
+        concatenated_smoothed_normalized = concatenated_smoothed / 255.0
+
+        concatenated_smoothed_batch.append(concatenated_smoothed_normalized)
+
+     # Convert the list of results to a NumPy array
+    concatenated_smoothed_batch = np.array(concatenated_smoothed_batch)
+    concatenated_smoothed_batch = np.transpose(concatenated_smoothed_batch, (0, 3, 1, 2))
+    return concatenated_smoothed_batch
+
+
 def train_one_epoch(epoch, dataloader, model, criterion, criterion_reconstruction, optimizer, device, log_interval_vis, tb_writer, args=None):
     imgs_res_folder = os.path.join(args.output_dir, 'current_res')
     os.makedirs(imgs_res_folder,exist_ok=True)
@@ -49,7 +97,10 @@ def train_one_epoch(epoch, dataloader, model, criterion, criterion_reconstructio
         # loss = sum([criterion(preds, labels) for preds in preds_list])  #HED loss, rcf_loss
 
         # loss for encoder decoder and add to current loss
-        reconstruction_loss = criterion_reconstruction(decoded, images)
+        # import pdb;pdb.set_trace()
+        concatenated_smoothed_batch = compute_Image_gradients(images.cpu().numpy())
+        concatenated_smoothed_batch = torch.from_numpy(concatenated_smoothed_batch).to(device)
+        reconstruction_loss = criterion_reconstruction(decoded, concatenated_smoothed_batch)
         loss = unet_edge_detection_loss + reconstruction_loss # both bdcn_loss and encoder - decoder loss
 
         optimizer.zero_grad()
@@ -203,6 +254,10 @@ def parse_args():
     parser.add_argument('--is_testing',type=int,
                         default = 0,
                         help='Script in testing mode.')
+    parser.add_argument('--resume',
+                        type =  int,
+                        default = 1,
+                        help = 'use previous trained data')  # Just for test
     # ----------- test -------0--
 
 
@@ -258,10 +313,7 @@ def parse_args():
                         default=False,
                         help='True: use same 2 imgs changing channels')  # Just for test
     
-    parser.add_argument('--resume',
-                        type =  bool,
-                        default = True,
-                        help = 'use previous trained data')  # Just for test
+    
     parser.add_argument('--checkpoint_data',
                         type=str,
                         default='24/24_model.pth',# 4 6 7 9 14
@@ -350,13 +402,14 @@ def main(args):
     candi_epoch = sorted([int(v) for v in os.listdir(os.path.join(args.output_dir, args.train_data)) if v.isdigit()], reverse=True)
     candi_checkpoint_path = [os.path.join(args.output_dir, args.train_data,str(v), str(v)+'_model.pth') for v in candi_epoch]
     ini_epoch = 0
-    for i in range(len(candi_epoch)):
-        candi_path = candi_checkpoint_path[i]
-        ini_epoch = candi_epoch[i]+1
-        if os.path.exists(candi_path):
-            checkpoint_path = candi_path
-            print("checkpoint_path: ", checkpoint_path)
-            break
+    if args.resume:
+        for i in range(len(candi_epoch)):
+            candi_path = candi_checkpoint_path[i]
+            ini_epoch = candi_epoch[i]+1
+            if os.path.exists(candi_path):
+                checkpoint_path = candi_path
+                print("checkpoint_path: ", checkpoint_path)
+                break
     # import pdb;pdb.set_trace()
     if args.tensorboard and not args.is_testing:
         from torch.utils.tensorboard import SummaryWriter # for torch 1.4 or greather
@@ -484,4 +537,5 @@ def main(args):
 
 if __name__ == '__main__':
     args = parse_args()
+    print(args)
     main(args)
