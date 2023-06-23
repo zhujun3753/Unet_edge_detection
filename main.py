@@ -438,7 +438,6 @@ def main(args):
     candi_epoch = sorted([int(v) for v in os.listdir(os.path.join(args.output_dir, args.train_data)) if v.isdigit()], reverse=True)
     candi_checkpoint_path = [os.path.join(args.output_dir, args.train_data,str(v), str(v)+'_model.pth') for v in candi_epoch]
     ini_epoch = 0
-<<<<<<< HEAD
     for i in range(len(candi_epoch)):
         candi_path = candi_checkpoint_path[i]
         ini_epoch = candi_epoch[i]+1
@@ -461,29 +460,6 @@ def main(args):
         info_txt = open(os.path.join(training_dir, 'training_settings.txt'), 'w')
         info_txt.write(str(training_notes))
         info_txt.close()
-=======
-    if args.resume:
-        for i in range(len(candi_epoch)):
-            candi_path = candi_checkpoint_path[i]
-            ini_epoch = candi_epoch[i]+1
-            if os.path.exists(candi_path):
-                checkpoint_path = candi_path
-                print("checkpoint_path: ", checkpoint_path)
-                break
-    # # import pdb;pdb.set_trace()
-    # if args.tensorboard and not args.is_testing:
-    #     from torch.utils.tensorboard import SummaryWriter # for torch 1.4 or greather
-    #     tb_writer = SummaryWriter(log_dir = training_dir)
-    #     # saving Model training settings
-    #     training_notes = ['DexiNed, Xavier Normal Init, LR= ' + str(args.lr) + ' WD= '
-    #                       + str(args.wd) + ' image size = ' + str(args.img_width)
-    #                       + ' adjust LR='+ str(args.adjust_lr) + ' Loss Function= BDCNloss2. '
-    #                       +'Trained on> '+args.train_data+' Tested on> '
-    #                       +args.test_data+' Batch size= '+str(args.batch_size)+' '+str(time.asctime())]
-    #     info_txt = open(os.path.join(training_dir, 'training_settings.txt'), 'w')
-    #     info_txt.write(str(training_notes))
-    #     info_txt.close()
->>>>>>> d0b33e0a81e7cfeb3ebe3ea8335e3a7ec51e20d1
 
     # Get computing device
     device = torch.device('cpu' if torch.cuda.device_count() == 0 else 'cuda')
@@ -512,13 +488,13 @@ def main(args):
 
     print('args.input_val_dir: ', args.input_val_dir)
     dataset_val = TestDataset(args.input_val_dir,
-                              test_data=args.test_data,
-                              img_width=args.test_img_width,
-                              img_height=args.test_img_height,
-                              mean_bgr=args.mean_pixel_values[0:3] if len(args.mean_pixel_values) == 4 else args.mean_pixel_values,
-                              test_list=args.test_list, arg = args)
+                              test_data = args.test_data,
+                              img_width = args.test_img_width,
+                              img_height = args.test_img_height,
+                              mean_bgr = args.mean_pixel_values[0:3] if len(args.mean_pixel_values) == 4 else args.mean_pixel_values,
+                              test_list = args.test_list, arg = args)
     dataloader_val = DataLoader(dataset_val,
-                                batch_size=1,
+                                batch_size = 1,
                                 shuffle=False,
                                 num_workers=args.workers)
     # Testing
