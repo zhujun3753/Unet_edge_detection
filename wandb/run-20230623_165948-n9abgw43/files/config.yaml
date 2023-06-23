@@ -1,0 +1,58 @@
+wandb_version: 1
+
+unet_learning_rate:
+  desc: null
+  value: 0.0001
+ecn_learning_rate:
+  desc: null
+  value: 0.001
+architecture:
+  desc: null
+  value: UNet + Encoder Decoder
+dataset:
+  desc: null
+  value: MBIPED
+epochs:
+  desc: null
+  value: 25
+batch_size:
+  desc: null
+  value: 8
+description:
+  desc: null
+  value: We seperate training the ECN from the Unet and prevent gradients from going
+    back through both networks
+_wandb:
+  desc: null
+  value:
+    python_version: 3.9.12
+    cli_version: 0.15.4
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1687535988.93717
+    t:
+      1:
+      - 1
+      - 51
+      - 55
+      - 79
+      2:
+      - 1
+      - 51
+      - 55
+      - 79
+      3:
+      - 16
+      - 19
+      - 23
+      4: 3.9.12
+      5: 0.15.4
+      8:
+      - 5
+num_unet_parameters:
+  desc: null
+  value: 24342913
+num_ECN_parameters:
+  desc: null
+  value: 2243655

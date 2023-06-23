@@ -7,6 +7,7 @@ def validate_avg_precison(dataloader, model, ecn_model, criterion, criterion_rec
     model.eval()
     ecn_model.eval()
     reconstruction_losses = []
+    unet_lossess = []
     precisions = []
     recalls = []
 
@@ -15,6 +16,7 @@ def validate_avg_precison(dataloader, model, ecn_model, criterion, criterion_rec
             images = sample_batched['images'].to(device)
             labels = sample_batched['labels'].to(device)
 
+            l_weight = [0.7,0.7,1.1,1.1,0.3,0.3,1.3]
             concatenated_smoothed_batch = compute_Image_gradients(images.cpu().numpy())
             concatenated_smoothed_batch = torch.from_numpy(concatenated_smoothed_batch).to(device)
 
@@ -23,8 +25,12 @@ def validate_avg_precison(dataloader, model, ecn_model, criterion, criterion_rec
             reconstruction_loss = criterion_reconstruction(decoded, concatenated_smoothed_batch)
             reconstruction_losses.append(reconstruction_loss.item())
 
+
+
             # Forward pass through the edge detection model
             preds_list = model(images, encoded.detach())
+            unet_loss = sum([criterion(preds, labels,l_w) for preds, l_w in zip(preds_list, l_weight[:len(preds_list)])]) # bdcn_loss
+            unet_lossess.append(unet_loss.item())
 
             # Calculate precision and recall for each threshold
             for preds in preds_list:
@@ -40,8 +46,13 @@ def validate_avg_precison(dataloader, model, ecn_model, criterion, criterion_rec
                 precisions.append(precision)
                 recalls.append(recall)
 
+
+    reconstruction_loss_avg = np.array(reconstruction_losses).mean()
+    unet_loss_avg = np.array(unet_lossess).mean()
     # Calculate average precision and recall
     avg_precision = np.mean(precisions)
     avg_recall = np.mean(recalls)
 
-    return avg_precision, avg_recall
+    ap = 2 * avg_precision * avg_recall / (avg_precision + avg_recall + 1e-8)  # Add epsilon to avoid division by zero
+
+    return avg_precision, avg_recall, ap, reconstruction_loss_avg, unet_loss_avg

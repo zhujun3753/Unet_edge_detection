@@ -15,6 +15,7 @@ from model import DexiNed
 from utils import (image_normalization, save_image_batch_to_disk, visualize_result,count_parameters)
 from unet import UNet
 from unet import  EncoderDecoder, compute_Image_gradients
+from evaluate_model import *
 import wandb
 
 import torch.nn as nn
@@ -123,8 +124,8 @@ def train_one_epoch(epoch, dataloader, model, ecn_model, criterion, criterion_re
                                    font, font_size, font_color, font_thickness, cv2.LINE_AA)
             cv2.imwrite(os.path.join(imgs_res_folder, 'results.png'), vis_imgs)
     reconstruction_loss_avg = np.array(reconstruction_loss_avg).mean()
-    unet_edge_detection_loss = np.array(unet_edge_detection_loss).mean()
-    return reconstruction_loss_avg , unet_edge_detection_loss
+    unet_loss_avg = np.array(unet_loss_avg).mean()
+    return reconstruction_loss_avg , unet_loss_avg
 
 
 def validate_one_epoch(epoch, dataloader, model, ecn_model, device, output_dir, arg = None):
@@ -374,8 +375,9 @@ def parse_args():
                         default = 8,
                         metavar='B',
                         help='the mini-batch size (default: 8)')
+    
     parser.add_argument('--workers',
-                        default = 16,
+                        default = 16 if IS_LINUX else 4,
                         # default = 4,
                         type = int,
                         help='The number of workers for the dataloaders.')
@@ -397,7 +399,8 @@ def parse_args():
     
     parser.add_argument('--channel_swap',
                         default = [2, 1, 0],
-                        type=int)
+                        type = int)
+    
     parser.add_argument('--crop_img',
                         default=True,
                         type=bool,
@@ -425,7 +428,7 @@ def main(args):
         "architecture": "UNet + Encoder Decoder",
         "dataset": "MBIPED",
         "epochs": args.epochs,
-        "batch_size" : args.batch_size,
+        "batch_size train/val" : args.batch_size,
         "description" : "We seperate training the ECN from the Unet and prevent gradients from going back through both networks"
         }
     )
@@ -471,6 +474,12 @@ def main(args):
         model = UNet(n_channels = 3, n_classes = 1, bilinear = True).to(device) #* 17262977
 
     ecn_model = EncoderDecoder(input_channels = 7).to(device)
+    
+    #Add number of parameters to wandb hyper parameters
+    wandb.config.num_unet_parameters = count_parameters(model)
+    wandb.config.num_ECN_parameters = count_parameters(ecn_model)
+
+
     if not args.is_testing:
         if args.resume:
             model.load_state_dict(torch.load(checkpoint_path, map_location=device))
@@ -487,14 +496,23 @@ def main(args):
                                       num_workers = args.workers)
 
     print('args.input_val_dir: ', args.input_val_dir)
+    # dataset_val = TestDataset(args.input_val_dir,
+    #                           test_data = args.test_data,
+    #                           img_width = args.test_img_width,
+    #                           img_height = args.test_img_height,
+    #                           mean_bgr = args.mean_pixel_values[0:3] if len(args.mean_pixel_values) == 4 else args.mean_pixel_values,
+    #                           test_list = args.test_list, arg = args)
+
+
     dataset_val = TestDataset(args.input_val_dir,
                               test_data = args.test_data,
                               img_width = args.test_img_width,
                               img_height = args.test_img_height,
                               mean_bgr = args.mean_pixel_values[0:3] if len(args.mean_pixel_values) == 4 else args.mean_pixel_values,
-                              test_list = args.test_list, arg = args)
+                              test_list = args.test_list,
+                              arg = args)
     dataloader_val = DataLoader(dataset_val,
-                                batch_size = 1,
+                                batch_size = args.batch_size,
                                 shuffle=False,
                                 num_workers=args.workers)
     # Testing
@@ -538,20 +556,23 @@ def main(args):
                     param_group['lr'] = lr2
         output_dir_epoch = os.path.join(args.output_dir, args.train_data, str(epoch))
         img_test_dir = os.path.join(output_dir_epoch, args.test_data + '_res')
-        os.makedirs(output_dir_epoch,exist_ok=True)
-        os.makedirs(img_test_dir, exist_ok=True)
-        # validate_one_epoch(epoch,
-        #                    dataloader_val,
-        #                    model,
-        #                    device,
-        #                    img_test_dir,
-        #                    arg=args)
-
+        os.makedirs(output_dir_epoch, exist_ok = True)
+        os.makedirs(img_test_dir, exist_ok = True)
+ 
+        val_avg_precision, val_avg_recall, val_ap,\
+              val_reconstruction_loss_avg, val_unet_loss_avg = \
+                validate_avg_precison(dataloader_val, 
+                                        model,
+                                        ecn_model, 
+                                        criterion,
+                                        criterion_reconstruction,
+                                        device)
+        
         avg_unet_loss, avg_ecn_loss = train_one_epoch(epoch,
                                         dataloader_train,
                                         model,
                                         ecn_model,
-                                        criterion,
+                                         criterion,
                                         criterion_reconstruction,
                                         optimizer,
                                         ecn_optimiser,
@@ -571,8 +592,17 @@ def main(args):
         # if tb_writer is not None:
         #     tb_writer.add_scalar('loss', avg_loss, epoch+1)
 
-        wandb.log({"Unet loss": avg_unet_loss, "Ecn_loss": avg_ecn_loss})
+        wandb.log({ "Unet loss": avg_unet_loss, 
+                    "Ecn_loss": avg_ecn_loss,
+                    "validation_avg_precision": val_avg_precision,
+                    "validation_avg_recall" : val_avg_recall,
+                    "avg_precision_formula" : val_ap, 
+                    "validation_reconstruction_loss_avg" : val_reconstruction_loss_avg,
+                    "unet_loss_avg" : val_unet_loss_avg,
+                    "Current Learning rate Unet" : optimizer.param_groups[0]['lr']})
+        
         print('Current learning rate> ', optimizer.param_groups[0]['lr'])
+    
     num_param = count_parameters(model)
     print('-------------------------------------------------------')
     print('DexiNed, # of Parameters:')
