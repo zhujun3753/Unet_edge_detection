@@ -5,3 +5,4 @@ torchvision
 imutils
 kornia
 tensorboard
+wandb
