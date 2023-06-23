@@ -37,7 +37,7 @@ class UNet(nn.Module):
         x3 = self.down2(x2)
         x4 = self.down3(x3)
         x5 = self.down4(x4)
-     
+    
         # Concatenate the encoder output with the output of self.down3
         # import pdb;pdb.set_trace()
         x5_encoded = self.catc(torch.cat([x5, encoded], dim=1))

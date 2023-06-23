@@ -173,8 +173,7 @@ def validate_one_epoch(epoch, dataloader, model, device, output_dir, arg=None):
 
 def test(checkpoint_path, dataloader, model, device, output_dir, args):
     if not os.path.isfile(checkpoint_path):
-        raise FileNotFoundError(
-            f"Checkpoint filte note found: {checkpoint_path}")
+        raise FileNotFoundError(f"Checkpoint filte note found: {checkpoint_path}")
     print(f"Restoring weights from: {checkpoint_path}")
     model.load_state_dict(torch.load(checkpoint_path, map_location=device))
     # Put model in evaluation mode
@@ -402,14 +401,15 @@ def main(args):
     candi_epoch = sorted([int(v) for v in os.listdir(os.path.join(args.output_dir, args.train_data)) if v.isdigit()], reverse=True)
     candi_checkpoint_path = [os.path.join(args.output_dir, args.train_data,str(v), str(v)+'_model.pth') for v in candi_epoch]
     ini_epoch = 0
-    if args.resume:
-        for i in range(len(candi_epoch)):
-            candi_path = candi_checkpoint_path[i]
-            ini_epoch = candi_epoch[i]+1
-            if os.path.exists(candi_path):
-                checkpoint_path = candi_path
-                print("checkpoint_path: ", checkpoint_path)
-                break
+    for i in range(len(candi_epoch)):
+        candi_path = candi_checkpoint_path[i]
+        ini_epoch = candi_epoch[i]+1
+        if os.path.exists(candi_path):
+            checkpoint_path = candi_path
+            print("checkpoint_path: ", checkpoint_path)
+            break
+    if not args.resume:
+        ini_epoch = 0
     # import pdb;pdb.set_trace()
     if args.tensorboard and not args.is_testing:
         from torch.utils.tensorboard import SummaryWriter # for torch 1.4 or greather
