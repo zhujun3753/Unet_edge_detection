@@ -27,4 +27,4 @@ git push  origin main
 # rm -rf .git
 # git init
 # git remote add origin https://github.com/zhujun3753/Unet_edge_detection.git
-# git pull  origin main
+# git pull  origin main --allow-unrelated-histories
