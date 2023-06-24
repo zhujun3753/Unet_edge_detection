@@ -1,0 +1,8 @@
+numpy
+opencv-python
+torch
+torchvision
+imutils
+kornia
+tensorboard
+wandb
